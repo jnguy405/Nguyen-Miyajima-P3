@@ -7,13 +7,44 @@ from planet_wars import issue_order
 def get_strongest_planet(state):
     return max(state.my_planets(), key=lambda p: p.num_ships, default=None)
 
-def get_weakest_planet(planets):
-    return min(planets, key=lambda p: p.num_ships, default=None)
+def get_weakest_planet(state):
+    return min(state.enemy_planets(), key=lambda p: p.num_ships, default=None)
 
 def get_closest_planet(state, source_planet, planets):
     if not source_planet or not planets:
         return None
     return min(planets, key=lambda p: state.distance(source_planet.ID, p.ID))
+
+def average_ally_power(state):
+    planets = [planet.num_ships for planet in state.my_planets()]
+    return sum(planets)/len(planets)
+
+def danger_level(state, planet):
+    # calculate using fleets' distances and ship counts, 
+    # as well as enemty planets distance and ship counts'
+    if not planet:
+        return 0
+    fleet_dist_weight = 5.0
+    fleet_ship_weight = 3.0
+    planet_dist_weight = 3.0
+    planet_ship_weight = 1.0
+    incoming_fleets = [
+            fleet for fleet in state.enemy_fleets()
+            if fleet.destination_planet == planet.ID
+        ]
+    enemy_planets = state.enemy_planets()
+    score = 0
+    for fleet in incoming_fleets:
+        #num ships, turns_remaining
+        ships = fleet.num_ships # the bigger the more dangerous
+        dist = fleet.turns_remaining # the lesser the more dangerous
+        score += (1000/(dist+1)) * fleet_dist_weight + ships*fleet_ship_weight # should come out like <=1
+    for p in enemy_planets:
+        ships = p.num_ships
+        dist = state.distance(p.ID,planet.ID)
+        #the same as before
+        score += dist*planet_dist_weight + ships*planet_ship_weight
+    return score
 
 def calculate_target_score(state, source_planet, target_planet):
     if not source_planet or not target_planet:
@@ -64,7 +95,7 @@ def attack_weakest_enemy_planet(state):
         return False
     
     # Find weakest enemy planet
-    weakest_enemy = get_weakest_planet(state.enemy_planets())
+    weakest_enemy = get_weakest_planet(state)
     if not weakest_enemy:
         return False
     
