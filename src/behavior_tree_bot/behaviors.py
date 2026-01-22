@@ -117,3 +117,71 @@ def expand_to_valuable_neutral(state):
     return False
 
 # DEFENSE BEHAVIORS
+
+def defend_under_attack_planet(state):
+    # Check for planets under attack
+    for my_planet in state.my_planets():
+        # Look for incoming enemy fleets
+        incoming_fleets = [
+            fleet for fleet in state.enemy_fleets()
+            if fleet.destination_planet == my_planet.ID
+        ]
+        
+        if incoming_fleets:
+            total_incoming = sum(f.num_ships for f in incoming_fleets)
+            # If we're going to lose this planet, try to reinforce
+            if total_incoming >= my_planet.num_ships:
+                # Find nearest strong planet to send reinforcements
+                reinforcing_planets = [
+                    p for p in state.my_planets() 
+                    if p.ID != my_planet.ID and p.num_ships > total_incoming + 5
+                ]
+                if reinforcing_planets:
+                    closest_reinforcer = get_closest_planet(state, my_planet, reinforcing_planets)
+                    if closest_reinforcer:
+                        ships_to_send = total_incoming - my_planet.num_ships + 5
+                        if ships_to_send > 0 and closest_reinforcer.num_ships > ships_to_send + 5:
+                            return issue_order(
+                                state, 
+                                closest_reinforcer.ID, 
+                                my_planet.ID, 
+                                ships_to_send
+                            )
+    return False
+
+def reinforce_frontline(state):
+    # Find planets on the "frontline" - closest to enemy planets
+    if not state.enemy_planets() or not state.my_planets():
+        return False
+    
+    # Find the planet closest to enemy territory
+    frontline_planet = None
+    min_distance = float('inf')
+    
+    for my_planet in state.my_planets():
+        for enemy_planet in state.enemy_planets():
+            distance = state.distance(my_planet.ID, enemy_planet.ID)
+            if distance < min_distance:
+                min_distance = distance
+                frontline_planet = my_planet
+    
+    if not frontline_planet:
+        return False
+    
+    # Find a strong planet to send reinforcements from
+    reinforcing_planets = [
+        p for p in state.my_planets() 
+        if p.ID != frontline_planet.ID and p.num_ships > frontline_planet.num_ships + 10
+    ]
+    
+    if reinforcing_planets:
+        strongest_reinforcer = max(reinforcing_planets, key=lambda p: p.num_ships)
+        ships_to_send = min(strongest_reinforcer.num_ships - 10, 20)
+        if ships_to_send > 5:
+            return issue_order(
+                state, 
+                strongest_reinforcer.ID, 
+                frontline_planet.ID, 
+                ships_to_send
+            )
+    return False
