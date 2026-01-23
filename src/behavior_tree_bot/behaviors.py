@@ -1,3 +1,63 @@
+"""
+BEHAVIOR TREE BOT - PLANET WARS
+
+SCORING SYSTEM OVERVIEW:
+------------------------
+
+The bot uses a multi-factor scoring system to prioritize targets for both 
+attack and expansion strategies. Scores are calculated based on the formula:
+
+SCORE = (GrowthRate * GROWTH_WEIGHT) + 
+        (1/Distance * DISTANCE_WEIGHT) - 
+        (EnemyShips * SHIPS_WEIGHT)
+
+Where:
+- GrowthRate: Planet's production rate (ships/turn)
+- Distance: Travel time between source and target planets
+- EnemyShips: Number of ships currently on target planet
+- Weights: GROWTH_WEIGHT=3.0, DISTANCE_WEIGHT=2.0, SHIPS_WEIGHT=1.5
+
+DANGER LEVEL CALCULATION:
+-------------------------
+For defensive decisions, we calculate a danger level for each planet:
+
+DANGER = Σ(Incoming Fleets: (1000/(Distance+1) * 5.0 + Ships * 3.0) +
+        Σ(Enemy Planets: Distance * 3.0 + Ships * 1.0)
+
+Where:
+- Incoming fleets are weighted more heavily (closer = more dangerous)
+- Nearby enemy planets with large fleets increase danger
+- Used to prioritize which planets need reinforcement
+
+HELPER FUNCTIONS:
+-----------------
+- get_strongest_planet(): Returns planet with most ships
+- get_weakest_enemy_planet(): Returns weakest enemy planet
+- get_closest_planet(): Returns nearest planet from a list
+- average_ally_power(): Average ship count across owned planets
+- danger_level(): Calculates threat level for a planet
+- calculate_target_score(): Main scoring function
+- find_best_enemy_target(): Applies scoring to enemy planets
+- find_best_neutral_target(): Applies scoring to neutral planets
+
+ATTACK STRATEGIES:
+------------------
+1. attack_best_target(): Uses scoring system to select optimal enemy planet
+2. attack_weakest_enemy_planet(): Targets weakest enemy (simpler fallback)
+3. blitz_attack(): Multi-planet assault when overwhelming advantage exists
+
+EXPANSION STRATEGIES:
+---------------------
+1. expand_to_valuable_neutral(): Uses scoring for high-growth neutrals
+2. spread_to_weakest_neutral_planet(): Targets weakest neutral (fallback)
+
+DEFENSE STRATEGIES:
+-------------------
+1. defend_under_attack_planet(): Reinforces planets with incoming fleets
+2. reinforce_frontline(): Strengthens planets closest to enemy territory
+3. defend_using_danger_level(): Uses danger scoring for smart defense
+"""
+
 import sys
 sys.path.insert(0, '../')
 from planet_wars import issue_order
