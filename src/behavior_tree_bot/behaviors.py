@@ -44,7 +44,6 @@ ATTACK STRATEGIES:
 ------------------
 1. attack_best_target(): Uses scoring system to select optimal enemy planet
 2. attack_weakest_enemy_planet(): Targets weakest enemy (simpler fallback)
-3. blitz_attack(): Multi-planet assault when overwhelming advantage exists
 
 EXPANSION STRATEGIES:
 ---------------------
