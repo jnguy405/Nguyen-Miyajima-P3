@@ -32,7 +32,7 @@ Where:
 HELPER FUNCTIONS:
 -----------------
 - get_strongest_planet(): Returns planet with most ships
-- get_weakest_enemy_planet(): Returns weakest enemy planet
+- get_weakest_planet(): Returns weakest from list of planets
 - get_closest_planet(): Returns nearest planet from a list
 - average_ally_power(): Average ship count across owned planets
 - danger_level(): Calculates threat level for a planet
@@ -66,8 +66,8 @@ from planet_wars import issue_order
 def get_strongest_planet(state):
     return max(state.my_planets(), key=lambda p: p.num_ships, default=None)
 
-def get_weakest_enemy_planet(state):
-    return min(state.enemy_planets(), key=lambda p: p.num_ships, default=None)
+def get_weakest_planet(planets):
+    return min(planets, key=lambda p: p.num_ships, default=None)
 
 def get_closest_planet(state, source_planet, planets):
     if not source_planet or not planets:
@@ -184,7 +184,7 @@ def attack_weakest_enemy_planet(state):
         return False
     
     # Find weakest enemy planet
-    weakest_enemy = get_weakest_enemy_planet(state)
+    weakest_enemy = get_weakest_planet(state.enemy_planets())
     if not weakest_enemy:
         return False
     
@@ -216,7 +216,7 @@ def spread_to_weakest_neutral_planet(state):
     if not strongest_planet:
         return False
     
-    weakest_neutral = get_weakest_enemy_planet(state.neutral_planets())
+    weakest_neutral = get_weakest_planet(state.neutral_planets())
     if not weakest_neutral:
         return False
     
