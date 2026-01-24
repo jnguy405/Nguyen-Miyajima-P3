@@ -39,6 +39,7 @@ HELPER FUNCTIONS:
 - calculate_target_score(): Main scoring function
 - find_best_enemy_target(): Applies scoring to enemy planets
 - find_best_neutral_target(): Applies scoring to neutral planets
+- deployable_planets(): all planets above average ally power; planets with surplus ships
 
 ATTACK STRATEGIES:
 ------------------
@@ -174,6 +175,11 @@ def find_best_neutral_target(state, source_planet):
             best_target = planet
 
     return best_target
+
+def deployable_planets(state):
+    power = average_ally_power(state)
+    return [(p,(p.ships-power)) for p in state.my_planets()
+            if p.ships > power]
 
 # ATTACK BEHAVIORS --------------------------------------------------------
 
