@@ -63,6 +63,7 @@ def setup_behavior_tree():
     ]
     
     root.child_nodes = [
+        Check(fleets_not_flying),
         def_seq,      # 1. Defend if attacked
         attack_seq,   # 2. CONSTANT ATTACK (main strategy)
         expand_seq    # 3. Expand if safe

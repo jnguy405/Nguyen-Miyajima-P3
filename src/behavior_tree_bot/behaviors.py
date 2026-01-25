@@ -203,8 +203,8 @@ def defend_attacked(state):
             total = sum(f.num_ships for f in incoming)
             if total >= my_p.num_ships:
                 for helper in state.my_planets():
-                    if helper.ID != my_p.ID and helper.num_ships > total + 10:
-                        send = total - my_p.num_ships + SAFETY_MARGIN
+                    if helper.ID != my_p.ID and helper.num_ships > total + SAFETY_MARGIN:
+                        send = total - (my_p.num_ships + SAFETY_MARGIN)
                         if send > 0:
                             return issue_order(state, helper.ID, my_p.ID, send)
     return False
