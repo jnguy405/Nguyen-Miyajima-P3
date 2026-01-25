@@ -39,7 +39,7 @@ HELPER FUNCTIONS:
 - calculate_target_score(): Main scoring function
 - find_best_enemy_target(): Applies scoring to enemy planets
 - find_best_neutral_target(): Applies scoring to neutral planets
-- deployable_planets(): all planets above average ally power; planets with surplus ships
+- deployable_planets(): array of tuples (planets above average ally power, surplus)
 
 ATTACK STRATEGIES:
 ------------------
