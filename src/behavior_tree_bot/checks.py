@@ -60,4 +60,4 @@ def has_strong_planet(state):
     return max(p.num_ships for p in planets) >= ATTACK_THRESHOLD if planets else False
 
 def fleets_not_flying(state):
-    return len(state.my_fleets()) >= 5
+    return len(state.my_fleets()) >= len(state.my_planets())*2
