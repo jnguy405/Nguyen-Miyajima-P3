@@ -1,318 +1,241 @@
 """
 BEHAVIOR TREE BOT - PLANET WARS
 
-SCORING SYSTEM OVERVIEW:
+SIMPLE BOT STRATEGY OVERVIEW:
+-----------------------------
+This bot implements basic planet wars strategies without complex scoring systems.
+It uses simple heuristics for attack, expansion, and defense.
+
+CONFIGURATION CONSTANTS:
 ------------------------
-
-The bot uses a multi-factor scoring system to prioritize targets for both 
-attack and expansion strategies. Scores are calculated based on the formula:
-
-SCORE = (GrowthRate * GROWTH_WEIGHT) + 
-        (1/Distance * DISTANCE_WEIGHT) - 
-        (EnemyShips * SHIPS_WEIGHT)
-
-Where:
-- GrowthRate: Planet's production rate (ships/turn)
-- Distance: Travel time between source and target planets
-- EnemyShips: Number of ships currently on target planet
-- Weights: GROWTH_WEIGHT=3.0, DISTANCE_WEIGHT=2.0, SHIPS_WEIGHT=1.5
-
-DANGER LEVEL CALCULATION:
--------------------------
-For defensive decisions, we calculate a danger level for each planet:
-
-DANGER = Σ(Incoming Fleets: (1000/(Distance+1) * 5.0 + Ships * 3.0) +
-        Σ(Enemy Planets: Distance * 3.0 + Ships * 1.0)
-
-Where:
-- Incoming fleets are weighted more heavily (closer = more dangerous)
-- Nearby enemy planets with large fleets increase danger
-- Used to prioritize which planets need reinforcement
+- MIN_ATTACK_STRENGTH: Minimum ships needed to launch attacks (15)
+- MIN_EXPAND_STRENGTH: Minimum ships needed to expand to neutrals (20)
+- MIN_DEFENSE_KEEP: Minimum ships to keep when sending fleets (10)
+- WAVE_SIZE: Fixed number of ships for wave attacks (20)
+- SAFETY_MARGIN: Buffer for various operations (5)
+- CONSOLIDATE_THRESHOLD: Unused in current implementation
 
 HELPER FUNCTIONS:
 -----------------
-- get_strongest_planet(): Returns planet with most ships
-- get_weakest_planet(): Returns weakest from list of planets
-- get_closest_planet(): Returns nearest planet from a list
-- average_ally_power(): Average ship count across owned planets
-- danger_level(): Calculates threat level for a planet
-- calculate_target_score(): Main scoring function
-- find_best_enemy_target(): Applies scoring to enemy planets
-- find_best_neutral_target(): Applies scoring to neutral planets
-- deployable_planets(): array of tuples (planets above average ally power, surplus)
+- strongest_planet(): Returns strongest friendly planet (most ships)
+- weakest_planet(): Returns weakest planet from a list
 
-ATTACK STRATEGIES:
+ATTACK BEHAVIORS:
+-----------------
+1. attack_weakest(): Strongest planet attacks weakest enemy planet
+   - Calculates required ships: enemy ships + distance*growth_rate + 1
+   - Sends only if we have ships beyond SAFETY_MARGIN
+
+2. constant_attack(): Strongest planet attacks closest enemy
+   - Sends half of strongest planet's ships
+   - Requires at least 10 ships to send
+
+3. attack_wave(): Strongest planet sends fixed WAVE_SIZE to weakest enemy
+   - Only if strongest has > WAVE_SIZE + MIN_DEFENSE_KEEP ships
+
+4. attack_any(): Any friendly planet attacks any enemy planet if feasible
+   - Iterates through all friendly/enemy combinations
+   - Uses same calculation as attack_weakest()
+
+EXPANSION BEHAVIORS:
+--------------------
+1. expand_neutral(): Strongest planet captures highest growth neutral
+   - Accounts for fleets already in transit
+   - Prioritizes neutral planets by growth rate
+   - Sends required ships (neutral ships + 1 - fleets already sent)
+
+DEFENSE BEHAVIORS:
 ------------------
-1. attack_best_target(): Uses scoring system to select optimal enemy planet
-2. attack_weakest_enemy_planet(): Targets weakest enemy (simpler fallback)
+1. defend_attacked(): Reinforces planets under attack
+   - Sends help when total incoming enemies >= current defenders
+   - Helper planets send enough to cover deficit + SAFETY_MARGIN
 
-EXPANSION STRATEGIES:
----------------------
-1. expand_to_valuable_neutral(): Uses scoring for high-growth neutrals
-2. spread_to_weakest_neutral_planet(): Targets weakest neutral (fallback)
+2. reinforce(): Strongest planet helps weakest friendly planet
+   - Only if strength difference > 20 ships
+   - Sends up to 20 ships or strong.num_ships - MIN_DEFENSE_KEEP
 
-DEFENSE STRATEGIES:
--------------------
-1. defend_under_attack_planet(): Reinforces planets with incoming fleets
-2. reinforce_frontline(): Strengthens planets closest to enemy territory
-3. defend_using_danger_level(): Uses danger scoring for smart defense
+3. consolidate(): Weak planets send ships to strongest planet
+   - Each weak planet sends all but 3 ships to strongest
+   - Helps concentrate forces
 """
 
 import sys
 sys.path.insert(0, '../')
 from planet_wars import issue_order
 
+# CONFIGURATION CONSTANTS
+MIN_ATTACK_STRENGTH = 15
+MIN_EXPAND_STRENGTH = 20
+MIN_DEFENSE_KEEP = 10
+WAVE_SIZE = 20
+SAFETY_MARGIN = 5
+CONSOLIDATE_THRESHOLD = 30
+
 # HELPERS AND UTILITIES --------------------------------------------------------
 
-def get_strongest_planet(state):
+def strongest_planet(state):
     return max(state.my_planets(), key=lambda p: p.num_ships, default=None)
 
-def get_weakest_planet(planets):
+def weakest_planet(planets):
     return min(planets, key=lambda p: p.num_ships, default=None)
-
-def get_closest_planet(state, source_planet, planets):
-    if not source_planet or not planets:
-        return None
-    return min(planets, key=lambda p: state.distance(source_planet.ID, p.ID))
-
-def average_ally_power(state):
-
-    planets = [planet.num_ships for planet in state.my_planets()]
-
-    # safe guard from crashing
-    if not planets:
-        return 0
-    
-    return sum(planets)/len(planets)
-
-# Calculate a danger score for a planet
-def danger_level(state, planet):
-    # calculate using fleets' distances and ship counts, 
-    # as well as enemty planets distance and ship counts'
-
-    fleet_dist_weight = 5.0
-    fleet_ship_weight = 3.0
-    planet_dist_weight = 3.0
-    planet_ship_weight = 1.0
-
-    incoming_fleets = [
-        fleet for fleet in state.enemy_fleets()
-        if fleet.destination_planet == planet.ID
-    ]
-    enemy_planets = state.enemy_planets()
-    score = 0
-
-    if not planet:
-        return 0
-
-    for fleet in incoming_fleets:
-        #num ships, turns_remaining
-        ships = fleet.num_ships # the bigger the more dangerous
-        dist = fleet.turns_remaining # the lesser the more dangerous
-        # score += (1000/(dist+1)) * fleet_dist_weight + ships*fleet_ship_weight 
-        # #should come out like <=1
-        # Normalize values between 0-1
-    normalized_dist = 1.0 / (dist + 1)  # Already between 0-1
-    normalized_ships = ships / (ships + 100)  # Scale ship count
-
-    score += normalized_dist * fleet_dist_weight + normalized_ships * fleet_ship_weight
-
-    for p in enemy_planets:
-        ships = p.num_ships
-        dist = state.distance(p.ID,planet.ID)
-        #the same as before
-        score += dist*planet_dist_weight + ships*planet_ship_weight
-
-    return score
-
-def calculate_target_score(state, source_planet, target_planet):
-
-    if not source_planet or not target_planet:
-        return -float('inf')
-    
-    distance = state.distance(source_planet.ID, target_planet.ID)
-
-    if distance == 0:
-        return -float('inf')
-    
-    # Score formula: prioritize high growth, close distance, low enemy ships
-    growth_weight = 3.0
-    distance_weight = 2.0
-    ships_weight = 1.5
-    
-    score = (target_planet.growth_rate * growth_weight) + \
-            (1 / distance * distance_weight) - \
-            (target_planet.num_ships * ships_weight)
-    
-    return score
-
-def find_best_enemy_target(state, source_planet):
-    if not source_planet:
-        return None
-    
-    best_score = -float('inf')
-    best_target = None
-
-    for planet in state.enemy_planets():
-        score = calculate_target_score(state, source_planet, planet)
-        if score > best_score:
-            best_score = score
-            best_target = planet
-
-    return best_target
-
-def find_best_neutral_target(state, source_planet):
-    if not source_planet:
-        return None
-    
-    best_score = -float('inf')
-    best_target = None
-
-    for planet in state.neutral_planets():
-        score = calculate_target_score(state, source_planet, planet)
-        if score > best_score:
-            best_score = score
-            best_target = planet
-
-    return best_target
-
-def deployable_planets(state):
-    power = average_ally_power(state)
-    return [(p,(p.ships-power)) for p in state.my_planets()
-            if p.ships > power]
 
 # ATTACK BEHAVIORS --------------------------------------------------------
 
-def attack_weakest_enemy_planet(state):
-    # Find my strongest planet
-    strongest_planet = get_strongest_planet(state)
-    if not strongest_planet:
+def attack_weakest(state):
+    src = strongest_planet(state)
+    if not src:
         return False
     
-    # Find weakest enemy planet
-    weakest_enemy = get_weakest_planet(state.enemy_planets())
-    if not weakest_enemy:
+    tgt = weakest_planet(state.enemy_planets())
+    if not tgt:
         return False
     
-    # Send enough ships to capture + safety margin
-    required_ships = weakest_enemy.num_ships + 1
-    if strongest_planet.num_ships > required_ships + 10:  # Keep some for defense
-        return issue_order(state, strongest_planet.ID, weakest_enemy.ID, required_ships)
-    return False
-
-def attack_best_target(state):
-
-    strongest_planet = get_strongest_planet(state)
-    if not strongest_planet or strongest_planet.num_ships < 10:
-        return False
+    req = tgt.num_ships + 1
+    dist = state.distance(src.ID, tgt.ID)
+    req += dist * tgt.growth_rate
     
-    best_target = find_best_enemy_target(state, strongest_planet)
-    if not best_target:
-        return False
-    
-    required_ships = best_target.num_ships + 1
-    if strongest_planet.num_ships > required_ships + 15:
-        return issue_order(state, strongest_planet.ID, best_target.ID, required_ships)
+    if src.num_ships > req + SAFETY_MARGIN:
+        return issue_order(state, src.ID, tgt.ID, req)
     
     return False
 
-def spread_to_weakest_neutral_planet(state):
-
-    strongest_planet = get_strongest_planet(state)
-    if not strongest_planet:
+# Determines how to perform constant attacks by strongest planet
+def constant_attack(state):
+    strongest = strongest_planet(state)
+    if not strongest or strongest.num_ships < 10:
         return False
     
-    weakest_neutral = get_weakest_planet(state.neutral_planets())
-    if not weakest_neutral:
+    enemies = state.enemy_planets()
+    if not enemies:
         return False
     
-    required_ships = weakest_neutral.num_ships + 1
-    if strongest_planet.num_ships > required_ships + 5:
-        return issue_order(state, strongest_planet.ID, weakest_neutral.ID, required_ships)
+    # Attack closest enemy
+    target = min(enemies, key=lambda e: state.distance(strongest.ID, e.ID))
+    
+    # Send half our ships
+    ships_to_send = strongest.num_ships // 2
+    if ships_to_send > 5:
+        return issue_order(state, strongest.ID, target.ID, ships_to_send)
     
     return False
 
-def expand_to_valuable_neutral(state):
-    strongest_planet = get_strongest_planet(state)
-    if not strongest_planet or strongest_planet.num_ships < 15:
+# Determines how to launch a wave attack by strongest planet
+def attack_wave(state):
+    src = strongest_planet(state)
+    if not src or src.num_ships < MIN_ATTACK_STRENGTH:
         return False
     
-    best_target = find_best_neutral_target(state, strongest_planet)
-    if not best_target:
+    enemies = state.enemy_planets()
+    if not enemies:
         return False
     
-    required_ships = best_target.num_ships + 1
-    if strongest_planet.num_ships > required_ships + 10:
-        return issue_order(state, strongest_planet.ID, best_target.ID, required_ships)
+    # Attack weakest enemy
+    tgt = weakest_planet(enemies)
+    
+    # Fixed wave attack
+    if src.num_ships > WAVE_SIZE + MIN_DEFENSE_KEEP:
+        return issue_order(state, src.ID, tgt.ID, WAVE_SIZE)
     
     return False
+
+# Determines how to attack any enemy planet from any friendly planet
+def attack_any(state):
+    if not state.enemy_planets():
+        return False
+    
+    for src in state.my_planets():
+        if src.num_ships < 10:
+            continue
+            
+        for tgt in state.enemy_planets():
+            req = tgt.num_ships + 1
+            dist = state.distance(src.ID, tgt.ID)
+            req += dist * tgt.growth_rate
+            
+            if src.num_ships > req + 3:
+                return issue_order(state, src.ID, tgt.ID, req)
+    
+    return False
+
+# EXPANSION BEHAVIORS --------------------------------------------------------
+
+# Deteremines how to expand to neutral planets by strongest planet
+def expand_neutral(state):
+    if not state.my_planets() or not state.neutral_planets():
+        return False
+    
+    src = strongest_planet(state)
+    if not src or src.num_ships < MIN_EXPAND_STRENGTH:
+        return False
+    
+    # Find viable targets
+    targets = []
+    for tgt in state.neutral_planets():
+        fleets_sent = sum(
+            f.num_ships for f in state.my_fleets()
+            if f.destination_planet == tgt.ID
+        )
+        
+        if fleets_sent >= tgt.num_ships + 1:
+            continue
+            
+        req = tgt.num_ships + 1 - fleets_sent
+        if req > 0 and req < src.num_ships - MIN_DEFENSE_KEEP:
+            targets.append((tgt, req))
+    
+    if not targets:
+        return False
+    
+    # Take highest growth target
+    targets.sort(key=lambda x: x[0].growth_rate, reverse=True)
+    tgt, req = targets[0]
+    
+    return issue_order(state, src.ID, tgt.ID, req)
 
 # DEFENSE BEHAVIORS --------------------------------------------------------
 
-def defend_under_attack_planet(state):
-    # Check for planets under attack
-    for my_planet in state.my_planets():
-        # Look for incoming enemy fleets
-        incoming_fleets = [
-            fleet for fleet in state.enemy_fleets()
-            if fleet.destination_planet == my_planet.ID
-        ]
+def defend_attacked(state):
+    for my_p in state.my_planets():
+        incoming = [f for f in state.enemy_fleets() 
+                   if f.destination_planet == my_p.ID]
         
-        if incoming_fleets:
-            total_incoming = sum(f.num_ships for f in incoming_fleets)
-            # If we're going to lose this planet, try to reinforce
-            if total_incoming >= my_planet.num_ships:
-                # Find nearest strong planet to send reinforcements
-                reinforcing_planets = [
-                    p for p in state.my_planets() 
-                    if p.ID != my_planet.ID and p.num_ships > total_incoming + 5
-                ]
-                if reinforcing_planets:
-                    closest_reinforcer = get_closest_planet(state, my_planet, reinforcing_planets)
-                    if closest_reinforcer:
-                        ships_to_send = total_incoming - my_planet.num_ships + 5
-                        if ships_to_send > 0 and closest_reinforcer.num_ships > ships_to_send + 5:
-                            return issue_order(
-                                state, 
-                                closest_reinforcer.ID, 
-                                my_planet.ID, 
-                                ships_to_send
-                            )
+        if incoming:
+            total = sum(f.num_ships for f in incoming)
+            if total >= my_p.num_ships:
+                for helper in state.my_planets():
+                    if helper.ID != my_p.ID and helper.num_ships > total + 10:
+                        send = total - my_p.num_ships + SAFETY_MARGIN
+                        if send > 0:
+                            return issue_order(state, helper.ID, my_p.ID, send)
     return False
 
-def reinforce_frontline(state):
-    # Find planets on the "frontline" - closest to enemy planets
-    if not state.enemy_planets() or not state.my_planets():
+# Takes strongest planet to help weakest friendly planet
+def reinforce(state):
+    if len(state.my_planets()) < 2:
         return False
     
-    # Find the planet closest to enemy territory
-    frontline_planet = None
-    min_distance = float('inf')
+    weak = weakest_planet(state.my_planets())
+    strong = strongest_planet(state)
     
-    for my_planet in state.my_planets():
-        for enemy_planet in state.enemy_planets():
-            distance = state.distance(my_planet.ID, enemy_planet.ID)
-            if distance < min_distance:
-                min_distance = distance
-                frontline_planet = my_planet
-    
-    if not frontline_planet:
+    if weak and strong and weak.ID != strong.ID:
+        if strong.num_ships > weak.num_ships + 20:
+            send = min(strong.num_ships - MIN_DEFENSE_KEEP, 20)
+            if send > SAFETY_MARGIN:
+                return issue_order(state, strong.ID, weak.ID, send)
+    return False
+
+# Consolidates weak planets to strongest planet
+def consolidate(state):
+    if len(state.my_planets()) < 2:
         return False
     
-    # Find a strong planet to send reinforcements from
-    reinforcing_planets = [
-        p for p in state.my_planets() 
-        if p.ID != frontline_planet.ID and p.num_ships > frontline_planet.num_ships + 10
-    ]
+    strong = strongest_planet(state)
+    weak_planets = [p for p in state.my_planets() 
+                   if p.ID != strong.ID and p.num_ships > 5]
     
-    if reinforcing_planets:
-        strongest_reinforcer = max(reinforcing_planets, key=lambda p: p.num_ships)
-        ships_to_send = min(strongest_reinforcer.num_ships - 10, 20)
-        if ships_to_send > 5:
-            return issue_order(
-                state, 
-                strongest_reinforcer.ID, 
-                frontline_planet.ID, 
-                ships_to_send
-            )
+    for weak in weak_planets:
+        send = weak.num_ships - 3
+        if send > 0:
+            return issue_order(state, weak.ID, strong.ID, send)
+    
     return False

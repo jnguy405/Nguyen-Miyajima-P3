@@ -18,32 +18,56 @@ from behavior_tree_bot.bt_nodes import Selector, Sequence, Action, Check
 
 from planet_wars import PlanetWars, finish_turn
 
-
 # You have to improve this tree or create an entire new one that is capable
 # of winning against all the 5 opponent bots
+
+# SIMPLE CHECKS --------------------------------------------------------
+def enemies_exist(state):
+    return len(state.enemy_planets()) > 0
+
+def need_build_up(state):
+    strong = strongest_planet(state)
+    return strong and strong.num_ships < 30
+
+def can_expand_safe(state):
+    return neutrals_available(state) and should_expand(state) and safe_to_expand(state)
+
+# BEHAVIOR TREE --------------------------------------------------------
 def setup_behavior_tree():
-
-    # Top-down construction of behavior tree
-    root = Selector(name='High Level Ordering of Strategies')
-
-    offensive_plan = Sequence(name='Offensive Strategy')
-    largest_fleet_check = Check(have_largest_fleet)
-    attack = Action(attack_weakest_enemy_planet)
-    offensive_plan.child_nodes = [largest_fleet_check, attack]
-
-    spread_sequence = Sequence(name='Spread Strategy')
-    neutral_planet_check = Check(if_neutral_planet_available)
-    spread_action = Action(spread_to_weakest_neutral_planet)
-    spread_sequence.child_nodes = [neutral_planet_check, spread_action]
-
-    defensive_plan = Sequence(name='Defensive Strategy')
-    strong_enough_check = Check(if_enemy_fleet_incoming)
-    defend_weakest = Action(defend_under_attack_planet)
-    defensive_plan.child_nodes = [strong_enough_check, defend_weakest]
-
-
-    root.child_nodes = [offensive_plan, spread_sequence, defensive_plan, attack.copy()]
-
+    root = Selector(name='Winner')
+    
+    # SIMPLE CHECKS
+    def enemies_exist(state):
+        return len(state.enemy_planets()) > 0
+    
+    # 1. DEFENSE
+    def_seq = Sequence(name='Defend')
+    def_seq.child_nodes = [
+        Check(enemy_fleets_incoming),
+        Action(defend_attacked)
+    ]
+    
+    # 2. CONSTANT ATTACK
+    attack_seq = Sequence(name='Attack')
+    attack_seq.child_nodes = [
+        Check(enemies_exist),
+        Action(constant_attack)
+    ]
+    
+    # 3. EXPAND (only when no enemies)
+    expand_seq = Sequence(name='Expand')
+    expand_seq.child_nodes = [
+        Check(lambda s: len(s.enemy_planets()) == 0),
+        Check(neutrals_available),
+        Action(expand_neutral)
+    ]
+    
+    root.child_nodes = [
+        def_seq,      # 1. Defend if attacked
+        attack_seq,   # 2. CONSTANT ATTACK (main strategy)
+        expand_seq    # 3. Expand if safe
+    ]
+    
     logging.info('\n' + root.tree_to_string())
     return root
 
