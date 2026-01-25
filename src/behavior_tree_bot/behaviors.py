@@ -112,8 +112,8 @@ def danger_level(state, planet):
         # score += (1000/(dist+1)) * fleet_dist_weight + ships*fleet_ship_weight 
         # #should come out like <=1
         # Normalize values between 0-1
-    normalized_dist = 1.0 / (dist + 1)  # Already between 0-1
-    normalized_ships = ships / (ships + 100)  # Scale ship count
+        normalized_dist = 1.0 / (dist + 1)  # Already between 0-1
+        normalized_ships = ships / (ships + 100)  # Scale ship count
 
     score += normalized_dist * fleet_dist_weight + normalized_ships * fleet_ship_weight
 

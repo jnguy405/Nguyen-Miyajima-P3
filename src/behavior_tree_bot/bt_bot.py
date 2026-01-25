@@ -37,7 +37,7 @@ def setup_behavior_tree():
     spread_sequence.child_nodes = [neutral_planet_check, spread_action]
 
     defensive_plan = Sequence(name='Defensive Strategy')
-    strong_enough_check = Check(if_enemy_fleet_incoming)
+    strong_enough_check = Check(if_high_danger_planet)
     defend_weakest = Action(defend_under_attack_planet)
     defensive_plan.child_nodes = [strong_enough_check, defend_weakest]
 
